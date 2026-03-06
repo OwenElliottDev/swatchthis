@@ -1,0 +1,35 @@
+name: Publish WASM to GitHub Release
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: jetli/wasm-pack-action@v0.4.0
+
+      - run: wasm-pack build --target web --features wasm
+
+      - name: Package WASM artifacts
+        run: tar czf swatchthis-wasm-${{ github.ref_name }}.tar.gz -C pkg swatchthis.js swatchthis.d.ts swatchthis_bg.wasm
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            swatchthis-wasm-${{ github.ref_name }}.tar.gz
+            pkg/swatchthis.js
+            pkg/swatchthis.d.ts
+            pkg/swatchthis_bg.wasm
+          draft: true

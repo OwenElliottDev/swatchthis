@@ -70,16 +70,12 @@ for (color, population) in &results {
 
 ## WebAssembly
 
-Enable the `wasm` feature and build with `wasm-pack`:
+### Pre-built from GitHub Releases
 
-```sh
-wasm-pack build --target web --features wasm
-```
-
-The WASM module exposes a `generateSwatches` function:
+Download the WASM files from the [latest release](https://github.com/OwenElliottDev/swatchthis/releases) and serve them alongside your app:
 
 ```javascript
-import init, { generateSwatches } from './pkg/swatchthis.js';
+import init, { generateSwatches } from './swatchthis.js';
 
 await init();
 
@@ -90,6 +86,14 @@ const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 const json = generateSwatches(imageData.data, 6, "lab", "kmeans++", 42n);
 const swatches = JSON.parse(json);
 // [{ hex: "#ff0000", r: 255, g: 0, b: 0, population: 1234 }, ...]
+```
+
+The release includes `swatchthis.js`, `swatchthis.d.ts`, and `swatchthis_bg.wasm`. All three files must be served from the same path.
+
+### Build from source
+
+```sh
+wasm-pack build --target web --features wasm
 ```
 
 A demo app is included in `demos/web/`. Build it with:
