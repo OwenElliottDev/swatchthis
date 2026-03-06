@@ -1,4 +1,4 @@
-name: Publish WASM to GitHub Release
+name: Publish WASM
 
 on:
   push:
@@ -20,15 +20,16 @@ jobs:
 
       - run: wasm-pack build --target web --features wasm
 
-      - name: Package WASM artifacts
-        run: tar czf swatchthis-wasm-${{ github.ref_name }}.tar.gz -C pkg swatchthis.js swatchthis.d.ts swatchthis_bg.wasm
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            swatchthis-wasm-${{ github.ref_name }}.tar.gz
-            pkg/swatchthis.js
-            pkg/swatchthis.d.ts
-            pkg/swatchthis_bg.wasm
-          draft: true
+      - name: Publish to wasm-dist branch with version tag
+        run: |
+          VERSION=${{ github.ref_name }}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan wasm-dist
+          git rm -rf .
+          cp pkg/swatchthis.js pkg/swatchthis.d.ts pkg/swatchthis_bg.wasm .
+          git add swatchthis.js swatchthis.d.ts swatchthis_bg.wasm
+          git commit -m "WASM build ${VERSION}"
+          git tag "wasm-${VERSION}"
+          git push -f origin wasm-dist
+          git push origin "wasm-${VERSION}"
