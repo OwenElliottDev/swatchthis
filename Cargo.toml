@@ -2,6 +2,14 @@
 name = "swatchthis"
 version = "0.1.0"
 edition = "2024"
+description = "Colour swatch extraction from images using k-means clustering"
+license = "MIT"
+license-file = "LICENCE"
+repository = "https://github.com/OwenElliottDev/swatchthis"
+homepage = "https://github.com/OwenElliottDev/swatchthis"
+keywords = ["color", "palette", "kmeans", "image", "wasm"]
+categories = ["graphics", "multimedia::images", "wasm"]
+readme = "README.md"
 
 [dependencies]
 wasm-bindgen = { version = "0.2", optional = true }
