@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>swatchthis demo</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #0e0e10;
+    color: #e4e4e7;
+    min-height: 100vh;
+    padding: 2rem;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 1.5rem;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  label {
+    display: block;
+    font-size: 0.8rem;
+    color: #a1a1aa;
+    margin-bottom: 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  input[type="text"], input[type="number"], select {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: #1c1c1f;
+    border: 1px solid #2e2e32;
+    border-radius: 6px;
+    color: #e4e4e7;
+    font-size: 0.9rem;
+    outline: none;
+  }
+
+  input:focus, select:focus {
+    border-color: #6366f1;
+  }
+
+  .drop-zone {
+    border: 2px dashed #2e2e32;
+    border-radius: 8px;
+    padding: 2rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s;
+    font-size: 0.9rem;
+    color: #71717a;
+  }
+
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: #6366f1;
+    color: #a5b4fc;
+  }
+
+  .drop-zone input[type="file"] { display: none; }
+
+  button {
+    width: 100%;
+    padding: 0.6rem;
+    background: #6366f1;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  button:hover { background: #4f46e5; }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  .main-area {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .preview-container {
+    position: relative;
+    background: #1c1c1f;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+  }
+
+  .preview-container canvas {
+    max-width: 100%;
+    max-height: 500px;
+    display: block;
+  }
+
+  .placeholder-text {
+    color: #3f3f46;
+    font-size: 0.9rem;
+  }
+
+  .swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .swatch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .swatch-color {
+    width: 72px;
+    height: 72px;
+    border-radius: 8px;
+    border: 1px solid #2e2e32;
+  }
+
+  .swatch-label {
+    font-size: 0.75rem;
+    font-family: monospace;
+    color: #a1a1aa;
+  }
+
+  .swatch-pop {
+    font-size: 0.65rem;
+    color: #52525b;
+  }
+
+  .status {
+    font-size: 0.8rem;
+    color: #71717a;
+    min-height: 1.2em;
+  }
+
+  .error { color: #f87171; }
+
+  @media (max-width: 700px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <div class="sidebar">
+    <h1>swatchthis</h1>
+
+    <div class="drop-zone" id="dropZone">
+      <p>Drop an image here or click to upload</p>
+      <input type="file" id="fileInput" accept="image/*">
+    </div>
+
+    <div>
+      <label for="urlInput">Or paste an image URL</label>
+      <input type="text" id="urlInput" placeholder="https://example.com/photo.jpg">
+    </div>
+
+    <div>
+      <label for="countInput">Swatch count</label>
+      <input type="number" id="countInput" value="6" min="1" max="32">
+    </div>
+
+    <div>
+      <label for="colorSpaceSelect">Colour space</label>
+      <select id="colorSpaceSelect">
+        <option value="lab" selected>CIELAB</option>
+        <option value="lab-ciede2000">CIELAB (CIEDE2000)</option>
+        <option value="rgb">RGB</option>
+      </select>
+    </div>
+
+    <div>
+      <label for="initSelect">Initialisation</label>
+      <select id="initSelect">
+        <option value="kmeans++" selected>K-Means++</option>
+        <option value="random">Random</option>
+      </select>
+    </div>
+
+    <div>
+      <label for="seedInput">Seed</label>
+      <input type="number" id="seedInput" value="42" min="0">
+    </div>
+
+    <button id="extractBtn" disabled>Extract swatches</button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="main-area">
+    <div class="preview-container" id="previewContainer">
+      <span class="placeholder-text">No image loaded</span>
+      <canvas id="canvas" style="display:none"></canvas>
+    </div>
+    <div class="swatches" id="swatchContainer"></div>
+  </div>
+</div>
+
+<script type="module">
+  import init, { generateSwatches } from './pkg/swatchthis.js';
+
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const urlInput = document.getElementById('urlInput');
+  const countInput = document.getElementById('countInput');
+  const colorSpaceSelect = document.getElementById('colorSpaceSelect');
+  const initSelect = document.getElementById('initSelect');
+  const seedInput = document.getElementById('seedInput');
+  const extractBtn = document.getElementById('extractBtn');
+  const status = document.getElementById('status');
+  const canvas = document.getElementById('canvas');
+  const previewContainer = document.getElementById('previewContainer');
+  const swatchContainer = document.getElementById('swatchContainer');
+
+  let wasmReady = false;
+  let imageLoaded = false;
+
+  // Init WASM
+  try {
+    await init();
+    wasmReady = true;
+    status.textContent = 'WASM loaded. Load an image to begin.';
+  } catch (e) {
+    status.textContent = 'Failed to load WASM. Did you run build.sh?';
+    status.classList.add('error');
+    console.error(e);
+  }
+
+  function updateBtn() {
+    extractBtn.disabled = !(wasmReady && imageLoaded);
+  }
+
+  // --- Image loading ---
+
+  function drawImage(img) {
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    canvas.style.display = 'block';
+    previewContainer.querySelector('.placeholder-text')?.remove();
+    imageLoaded = true;
+    updateBtn();
+    status.textContent = `Image loaded (${img.naturalWidth}x${img.naturalHeight})`;
+    status.classList.remove('error');
+  }
+
+  function loadFile(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const img = new Image();
+    img.onload = () => { drawImage(img); URL.revokeObjectURL(img.src); };
+    img.onerror = () => { status.textContent = 'Failed to load image file.'; status.classList.add('error'); };
+    img.src = URL.createObjectURL(file);
+  }
+
+  function loadURL(url) {
+    if (!url) return;
+    status.textContent = 'Loading image...';
+    status.classList.remove('error');
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => drawImage(img);
+    img.onerror = () => { status.textContent = 'Failed to load URL (CORS or invalid image).'; status.classList.add('error'); };
+    img.src = url;
+  }
+
+  // Drop zone
+  dropZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+  });
+
+  // URL input
+  urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') loadURL(urlInput.value.trim()); });
+
+  // --- Extraction ---
+
+  extractBtn.addEventListener('click', () => {
+    if (!wasmReady || !imageLoaded) return;
+
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const rgba = imageData.data;
+
+    const count = Math.max(1, Math.min(32, parseInt(countInput.value) || 6));
+    const colorSpace = colorSpaceSelect.value;
+    const initMethod = initSelect.value;
+    const seed = BigInt(Math.max(0, parseInt(seedInput.value) || 0));
+
+    status.textContent = 'Extracting swatches...';
+    status.classList.remove('error');
+
+    // Run async so the UI updates
+    requestAnimationFrame(() => {
+      try {
+        const t0 = performance.now();
+        const json = generateSwatches(rgba, count, colorSpace, initMethod, seed);
+        const elapsed = (performance.now() - t0).toFixed(0);
+        const swatches = JSON.parse(json);
+
+        status.textContent = `Extracted ${swatches.length} swatches in ${elapsed}ms (${canvas.width}x${canvas.height}, ${(rgba.length / 4).toLocaleString()} pixels)`;
+        renderSwatches(swatches);
+      } catch (e) {
+        status.textContent = `Error: ${e.message}`;
+        status.classList.add('error');
+        console.error(e);
+      }
+    });
+  });
+
+  function renderSwatches(swatches) {
+    swatchContainer.innerHTML = '';
+    const totalPop = swatches.reduce((s, sw) => s + sw.population, 0);
+    for (const sw of swatches) {
+      const pct = ((sw.population / totalPop) * 100).toFixed(1);
+      const div = document.createElement('div');
+      div.className = 'swatch';
+      div.innerHTML = `
+        <div class="swatch-color" style="background:${sw.hex}"></div>
+        <span class="swatch-label">${sw.hex}</span>
+        <span class="swatch-pop">${pct}%</span>
+      `;
+      swatchContainer.appendChild(div);
+    }
+  }
+</script>
+</body>
+</html>
