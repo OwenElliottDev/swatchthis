@@ -6,7 +6,7 @@ A Rust library for extracting dominant colour swatches from images using k-means
 
 - **K-means and k-means++** centroid initialisation
 - **RGB and CIELAB** colour space clustering
-- **8-bit colour** throughout
+- **CIEDE2000 Distance** for CIELAB, slower but good perceptual accuracy
 - **WebAssembly support** via `wasm-bindgen` (behind the `wasm` feature flag)
 - **No runtime dependencies** for native builds (deterministic PRNG, no `rand` crate)
 
