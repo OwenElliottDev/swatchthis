@@ -70,12 +70,12 @@ for (color, population) in &results {
 
 ## WebAssembly
 
-### Pre-built from GitHub Releases
+### CDN (jsdelivr)
 
-Download the WASM files from the [latest release](https://github.com/OwenElliottDev/swatchthis/releases) and serve them alongside your app:
+Use the pre-built WASM files directly from jsdelivr — pin to a specific version:
 
 ```javascript
-import init, { generateSwatches } from './swatchthis.js';
+import init, { generateSwatches } from 'https://cdn.jsdelivr.net/gh/OwenElliottDev/swatchthis@wasm-0.1.0/swatchthis.js';
 
 await init();
 
@@ -87,8 +87,6 @@ const json = generateSwatches(imageData.data, 6, "lab", "kmeans++", 42n);
 const swatches = JSON.parse(json);
 // [{ hex: "#ff0000", r: 255, g: 0, b: 0, population: 1234 }, ...]
 ```
-
-The release includes `swatchthis.js`, `swatchthis.d.ts`, and `swatchthis_bg.wasm`. All three files must be served from the same path.
 
 ### Build from source
 
