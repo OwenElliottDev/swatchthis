@@ -2,6 +2,8 @@
 
 A Rust library for extracting dominant colour swatches from images using k-means clustering. Works in native Rust and WebAssembly.
 
+#### [[demo](https://owenelliott.dev/swatchthis)]
+
 ## Features
 
 - **K-means and k-means++** centroid initialisation
