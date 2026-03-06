@@ -126,69 +126,83 @@ impl Lab {
         dl * dl + da * da + db * db
     }
 
+    /// CIEDE2000 colour difference. Returns a non-negative value where 0
+    /// means identical colours. The final sqrt is omitted since this is used
+    /// for comparison only (sqrt is monotonic).
     pub fn distance_ciede2000(self, other: Lab) -> f32 {
-        let c1 = (self.a.powi(2) + self.b.powi(2)).sqrt();
-        let c2 = (other.a.powi(2) + other.b.powi(2)).sqrt();
-        let c_avg = (c1 + c2) / 2.0;
-        let c_avg7 = c_avg.powi(7);
-        let g = 0.5 * (1.0 - (c_avg7 / (c_avg7 + 25_f32.powi(7))).sqrt());
+        use std::f32::consts::{PI, TAU};
+        const POW25_7: f32 = 6_103_515_625.0; // 25^7
+        const DEG2RAD: f32 = PI / 180.0;
+        const RAD30: f32 = 30.0 * DEG2RAD;
+        const RAD6: f32 = 6.0 * DEG2RAD;
+        const RAD63: f32 = 63.0 * DEG2RAD;
+        const RAD275: f32 = 275.0 * DEG2RAD;
+        const RAD25: f32 = 25.0 * DEG2RAD;
+
+        let c1 = (self.a * self.a + self.b * self.b).sqrt();
+        let c2 = (other.a * other.a + other.b * other.b).sqrt();
+        let c_avg = (c1 + c2) * 0.5;
+        let c_avg7 = c_avg * c_avg * c_avg * c_avg * c_avg * c_avg * c_avg;
+        let g = 0.5 * (1.0 - (c_avg7 / (c_avg7 + POW25_7)).sqrt());
 
         let a1p = self.a * (1.0 + g);
         let a2p = other.a * (1.0 + g);
 
-        let c1p = (a1p.powi(2) + self.b.powi(2)).sqrt();
-        let c2p = (a2p.powi(2) + other.b.powi(2)).sqrt();
+        let c1p = (a1p * a1p + self.b * self.b).sqrt();
+        let c2p = (a2p * a2p + other.b * other.b).sqrt();
 
-        let h1p = self.b.atan2(a1p).to_degrees().rem_euclid(360.0);
-        let h2p = other.b.atan2(a2p).to_degrees().rem_euclid(360.0);
+        let h1p = self.b.atan2(a1p).rem_euclid(TAU);
+        let h2p = other.b.atan2(a2p).rem_euclid(TAU);
 
         let d_lp = other.l - self.l;
         let d_cp = c2p - c1p;
 
-        let dhp = if c1p * c2p == 0.0 {
+        let c1c2 = c1p * c2p;
+        let dhp = if c1c2 == 0.0 {
             0.0
-        } else if (h2p - h1p).abs() <= 180.0 {
+        } else if (h2p - h1p).abs() <= PI {
             h2p - h1p
-        } else if h2p - h1p > 180.0 {
-            h2p - h1p - 360.0
+        } else if h2p - h1p > PI {
+            h2p - h1p - TAU
         } else {
-            h2p - h1p + 360.0
+            h2p - h1p + TAU
         };
 
-        let d_hp = 2.0 * (c1p * c2p).sqrt() * (dhp / 2.0).to_radians().sin();
+        let d_hp = 2.0 * c1c2.sqrt() * (dhp * 0.5).sin();
 
-        let lp_avg = (self.l + other.l) / 2.0;
-        let cp_avg = (c1p + c2p) / 2.0;
+        let lp_avg = (self.l + other.l) * 0.5;
+        let cp_avg = (c1p + c2p) * 0.5;
 
-        let hp_avg = if c1p * c2p == 0.0 {
+        let hp_avg = if c1c2 == 0.0 {
             h1p + h2p
-        } else if (h1p - h2p).abs() <= 180.0 {
-            (h1p + h2p) / 2.0
-        } else if h1p + h2p < 360.0 {
-            (h1p + h2p + 360.0) / 2.0
+        } else if (h1p - h2p).abs() <= PI {
+            (h1p + h2p) * 0.5
+        } else if h1p + h2p < TAU {
+            (h1p + h2p + TAU) * 0.5
         } else {
-            (h1p + h2p - 360.0) / 2.0
+            (h1p + h2p - TAU) * 0.5
         };
 
-        let t = 1.0 - 0.17 * (hp_avg - 30.0).to_radians().cos()
-            + 0.24 * (2.0 * hp_avg).to_radians().cos()
-            + 0.32 * (3.0 * hp_avg + 6.0).to_radians().cos()
-            - 0.20 * (4.0 * hp_avg - 63.0).to_radians().cos();
+        let t = 1.0 - 0.17 * (hp_avg - RAD30).cos()
+            + 0.24 * (2.0 * hp_avg).cos()
+            + 0.32 * (3.0 * hp_avg + RAD6).cos()
+            - 0.20 * (4.0 * hp_avg - RAD63).cos();
 
-        let sl = 1.0 + 0.015 * (lp_avg - 50.0).powi(2) / (20.0 + (lp_avg - 50.0).powi(2)).sqrt();
+        let lp50 = lp_avg - 50.0;
+        let lp50_sq = lp50 * lp50;
+        let sl = 1.0 + 0.015 * lp50_sq / (20.0 + lp50_sq).sqrt();
         let sc = 1.0 + 0.045 * cp_avg;
         let sh = 1.0 + 0.015 * cp_avg * t;
 
-        let cp_avg7 = cp_avg.powi(7);
-        let rc = 2.0 * (cp_avg7 / (cp_avg7 + 25_f32.powi(7))).sqrt();
-        let d_theta = 30.0 * (-(((hp_avg - 275.0) / 25.0).powi(2))).exp();
-        let rt = -(2.0 * d_theta).to_radians().sin() * rc;
+        let cp_avg7 = cp_avg * cp_avg * cp_avg * cp_avg * cp_avg * cp_avg * cp_avg;
+        let rc = 2.0 * (cp_avg7 / (cp_avg7 + POW25_7)).sqrt();
+        let hp_term = (hp_avg - RAD275) / RAD25;
+        let rt = -(2.0 * 30.0 * DEG2RAD * (-(hp_term * hp_term)).exp()).sin() * rc;
 
-        ((d_lp / sl).powi(2)
-            + (d_cp / sc).powi(2)
-            + (d_hp / sh).powi(2)
-            + rt * (d_cp / sc) * (d_hp / sh))
-            .sqrt()
+        let dl_sl = d_lp / sl;
+        let dc_sc = d_cp / sc;
+        let dh_sh = d_hp / sh;
+        dl_sl * dl_sl + dc_sc * dc_sc + dh_sh * dh_sh + rt * dc_sc * dh_sh
     }
 }
 
