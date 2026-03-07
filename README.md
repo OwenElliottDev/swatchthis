@@ -24,16 +24,16 @@ swatchthis = "0.1"
 ### Extract swatches from raw RGBA pixel data
 
 ```rust
-use swatchthis::{generate_swatches, pixels_from_rgba};
-use swatchthis::kmeans::{ColorSpace, InitMethod};
+use swatchthis::{generate_swatches_kmeans, pixels_from_rgba};
+use swatchthis::kmeans::{KmeansColorSpace, InitMethod};
 
 let rgba_data: &[u8] = &[/* RGBA bytes from an image */];
 let pixels = pixels_from_rgba(rgba_data);
 
-let swatches = generate_swatches(
+let swatches = generate_swatches_kmeans(
     &pixels,
     6,                          // number of swatches
-    ColorSpace::Lab,            // cluster in CIELAB space
+    KmeansColorSpace::Lab,            // cluster in CIELAB space
     InitMethod::KMeansPlusPlus, // k-means++ init
     42,                         // seed for deterministic results
 );
@@ -60,10 +60,10 @@ println!("{}", red.to_hex()); // #ff0000
 
 ```rust
 use swatchthis::color::Rgb;
-use swatchthis::kmeans::{extract_colors, ColorSpace, InitMethod};
+use swatchthis::kmeans::{extract_colors_kmeans, KmeansColorSpace, InitMethod};
 
 let pixels: Vec<Rgb> = vec![/* ... */];
-let results = extract_colors(&pixels, 4, ColorSpace::Rgb, InitMethod::Random, 1);
+let results = extract_colors_kmeans(&pixels, 4, KmeansColorSpace::Rgb, InitMethod::Random, 1);
 
 for (color, population) in &results {
     println!("{} ({}px)", color.to_hex(), population);

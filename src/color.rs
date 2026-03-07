@@ -242,6 +242,22 @@ fn lab_f_inv(t: f32) -> f32 {
     }
 }
 
+pub trait ColorChannels {
+    fn channels(&self) -> (f32, f32, f32);
+}
+
+impl ColorChannels for Rgb {
+    fn channels(&self) -> (f32, f32, f32) {
+        (self.r as f32, self.g as f32, self.b as f32)
+    }
+}
+
+impl ColorChannels for Lab {
+    fn channels(&self) -> (f32, f32, f32) {
+        (self.l, self.a, self.b)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

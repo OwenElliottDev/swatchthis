@@ -182,6 +182,14 @@
     </div>
 
     <div>
+      <label for="algorithmSelect">Algorithm</label>
+      <select id="algorithmSelect">
+        <option value="kmeans" selected>K-Means</option>
+        <option value="octree">Octree</option>
+      </select>
+    </div>
+
+    <div>
       <label for="countInput">Swatch count</label>
       <input type="number" id="countInput" value="6" min="1" max="32">
     </div>
@@ -190,12 +198,12 @@
       <label for="colorSpaceSelect">Colour space</label>
       <select id="colorSpaceSelect">
         <option value="lab" selected>CIELAB</option>
-        <option value="lab-ciede2000">CIELAB (CIEDE2000)</option>
+        <option value="lab-ciede2000" class="kmeans-only">CIELAB (CIEDE2000)</option>
         <option value="rgb">RGB</option>
       </select>
     </div>
 
-    <div>
+    <div class="kmeans-only">
       <label for="initSelect">Initialisation</label>
       <select id="initSelect">
         <option value="kmeans++" selected>K-Means++</option>
@@ -203,9 +211,14 @@
       </select>
     </div>
 
-    <div>
+    <div class="kmeans-only">
       <label for="seedInput">Seed</label>
       <input type="number" id="seedInput" value="42" min="0">
+    </div>
+
+    <div class="octree-only" style="display:none">
+      <label for="maxDepthInput">Max depth</label>
+      <input type="number" id="maxDepthInput" value="6" min="1" max="8">
     </div>
 
     <button id="extractBtn" disabled>Extract swatches</button>
@@ -222,20 +235,36 @@
 </div>
 
 <script type="module">
-  import init, { generateSwatches } from './pkg/swatchthis.js';
+  import init, { generateSwatches, generateSwatchesOctree } from './pkg/swatchthis.js';
 
   const dropZone = document.getElementById('dropZone');
   const fileInput = document.getElementById('fileInput');
   const urlInput = document.getElementById('urlInput');
+  const algorithmSelect = document.getElementById('algorithmSelect');
   const countInput = document.getElementById('countInput');
   const colorSpaceSelect = document.getElementById('colorSpaceSelect');
   const initSelect = document.getElementById('initSelect');
   const seedInput = document.getElementById('seedInput');
+  const maxDepthInput = document.getElementById('maxDepthInput');
   const extractBtn = document.getElementById('extractBtn');
   const status = document.getElementById('status');
   const canvas = document.getElementById('canvas');
   const previewContainer = document.getElementById('previewContainer');
   const swatchContainer = document.getElementById('swatchContainer');
+
+  // Toggle controls based on selected algorithm
+  function updateAlgorithmControls() {
+    const algo = algorithmSelect.value;
+    document.querySelectorAll('.kmeans-only').forEach(el => el.style.display = algo === 'kmeans' ? '' : 'none');
+    document.querySelectorAll('.octree-only').forEach(el => el.style.display = algo === 'octree' ? '' : 'none');
+
+    // Reset colour space if CIEDE2000 was selected and we switched to octree
+    if (algo === 'octree' && colorSpaceSelect.value === 'lab-ciede2000') {
+      colorSpaceSelect.value = 'lab';
+    }
+  }
+
+  algorithmSelect.addEventListener('change', updateAlgorithmControls);
 
   let wasmReady = false;
   let imageLoaded = false;
@@ -313,10 +342,9 @@
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const rgba = imageData.data;
 
+    const algo = algorithmSelect.value;
     const count = Math.max(1, Math.min(32, parseInt(countInput.value) || 6));
     const colorSpace = colorSpaceSelect.value;
-    const initMethod = initSelect.value;
-    const seed = BigInt(Math.max(0, parseInt(seedInput.value) || 0));
 
     status.textContent = 'Extracting swatches...';
     status.classList.remove('error');
@@ -325,7 +353,15 @@
     requestAnimationFrame(() => {
       try {
         const t0 = performance.now();
-        const json = generateSwatches(rgba, count, colorSpace, initMethod, seed);
+        let json;
+        if (algo === 'octree') {
+          const maxDepth = Math.max(1, Math.min(8, parseInt(maxDepthInput.value) || 6));
+          json = generateSwatchesOctree(rgba, count, colorSpace, maxDepth);
+        } else {
+          const initMethod = initSelect.value;
+          const seed = BigInt(Math.max(0, parseInt(seedInput.value) || 0));
+          json = generateSwatches(rgba, count, colorSpace, initMethod, seed);
+        }
         const elapsed = (performance.now() - t0).toFixed(0);
         const swatches = JSON.parse(json);
 

@@ -6,8 +6,8 @@
 //! # Example
 //!
 //! ```
-//! use swatchthis::{generate_swatches, pixels_from_rgba};
-//! use swatchthis::kmeans::{ColorSpace, InitMethod};
+//! use swatchthis::{generate_swatches_kmeans, pixels_from_rgba};
+//! use swatchthis::kmeans::{KmeansColorSpace, InitMethod};
 //!
 //! // Simulate a small image: 4 red pixels and 4 blue pixels (RGBA)
 //! let rgba: Vec<u8> = [255, 0, 0, 255].repeat(4)
@@ -16,7 +16,7 @@
 //!     .collect();
 //!
 //! let pixels = pixels_from_rgba(&rgba);
-//! let swatches = generate_swatches(&pixels, 2, ColorSpace::Rgb, InitMethod::KMeansPlusPlus, 42);
+//! let swatches = generate_swatches_kmeans(&pixels, 2, KmeansColorSpace::Rgb, InitMethod::KMeansPlusPlus, 42);
 //!
 //! assert_eq!(swatches.len(), 2);
 //! for s in &swatches {
@@ -26,10 +26,12 @@
 
 pub mod color;
 pub mod kmeans;
+pub mod octree;
 pub mod swatch;
 
 use color::Rgb;
-use kmeans::{ColorSpace, InitMethod};
+use kmeans::{InitMethod, KmeansColorSpace};
+use octree::OctreeColorSpace;
 use swatch::Swatch;
 
 /// Extracts dominant colour swatches from a slice of pixels.
@@ -41,26 +43,43 @@ use swatch::Swatch;
 /// # Example
 ///
 /// ```
-/// use swatchthis::generate_swatches;
+/// use swatchthis::generate_swatches_kmeans;
 /// use swatchthis::color::Rgb;
-/// use swatchthis::kmeans::{ColorSpace, InitMethod};
+/// use swatchthis::kmeans::{KmeansColorSpace, InitMethod};
 ///
 /// let pixels = vec![Rgb::new(255, 0, 0); 100];
-/// let swatches = generate_swatches(&pixels, 1, ColorSpace::Rgb, InitMethod::Random, 1);
+/// let swatches = generate_swatches_kmeans(&pixels, 1, KmeansColorSpace::Rgb, InitMethod::Random, 1);
 ///
 /// assert_eq!(swatches[0].color, Rgb::new(255, 0, 0));
 /// ```
-pub fn generate_swatches(
+pub fn generate_swatches_kmeans(
     pixels: &[Rgb],
     count: usize,
-    color_space: ColorSpace,
+    color_space: KmeansColorSpace,
     init: InitMethod,
     seed: u64,
 ) -> Vec<Swatch> {
-    let mut swatches: Vec<Swatch> = kmeans::extract_colors(pixels, count, color_space, init, seed)
-        .into_iter()
-        .map(|(color, pop)| Swatch::new(color, pop))
-        .collect();
+    let mut swatches: Vec<Swatch> =
+        kmeans::extract_colors_kmeans(pixels, count, color_space, init, seed)
+            .into_iter()
+            .map(|(color, pop)| Swatch::new(color, pop))
+            .collect();
+
+    swatches.sort_by(|a, b| b.population.cmp(&a.population));
+    swatches
+}
+
+pub fn generate_swatches_octree(
+    pixels: &[Rgb],
+    count: usize,
+    color_space: OctreeColorSpace,
+    max_depth: usize,
+) -> Vec<Swatch> {
+    let mut swatches: Vec<Swatch> =
+        octree::extract_colors_octree(pixels, count, color_space, max_depth)
+            .into_iter()
+            .map(|(color, pop)| Swatch::new(color, pop))
+            .collect();
 
     swatches.sort_by(|a, b| b.population.cmp(&a.population));
     swatches
@@ -88,12 +107,22 @@ pub fn pixels_from_rgba(data: &[u8]) -> Vec<Rgb> {
         .collect()
 }
 
+const MAX_SAMPLE: usize = 20_000;
+
+fn sample_step(len: usize) -> usize {
+    if len > MAX_SAMPLE {
+        len / MAX_SAMPLE
+    } else {
+        1
+    }
+}
+
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
 
 #[cfg(feature = "wasm")]
 #[wasm_bindgen(js_name = generateSwatches)]
-pub fn generate_swatches_wasm(
+pub fn generate_swatches_kmeans_wasm(
     rgba_data: &[u8],
     count: usize,
     color_space: &str,
@@ -103,16 +132,49 @@ pub fn generate_swatches_wasm(
     let pixels = pixels_from_rgba(rgba_data);
 
     let cs = match color_space {
-        "lab" => ColorSpace::Lab,
-        "lab-ciede2000" => ColorSpace::LabCIEDE2000,
-        _ => ColorSpace::Rgb,
+        "lab" => KmeansColorSpace::Lab,
+        "lab-ciede2000" => KmeansColorSpace::LabCIEDE2000,
+        _ => KmeansColorSpace::Rgb,
     };
     let init = match init_method {
         "random" => InitMethod::Random,
         _ => InitMethod::KMeansPlusPlus,
     };
 
-    let swatches = generate_swatches(&pixels, count, cs, init, seed);
+    let swatches = generate_swatches_kmeans(&pixels, count, cs, init, seed);
+
+    let entries: Vec<String> = swatches
+        .iter()
+        .map(|s| {
+            format!(
+                r#"{{"hex":"{}","r":{},"g":{},"b":{},"population":{}}}"#,
+                s.hex(),
+                s.color.r,
+                s.color.g,
+                s.color.b,
+                s.population
+            )
+        })
+        .collect();
+    format!("[{}]", entries.join(","))
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = generateSwatchesOctree)]
+pub fn generate_swatches_octree_wasm(
+    rgba_data: &[u8],
+    count: usize,
+    color_space: &str,
+    max_depth: u32,
+) -> String {
+    let pixels = pixels_from_rgba(rgba_data);
+
+    let cs = match color_space {
+        "lab" => OctreeColorSpace::Lab,
+        _ => OctreeColorSpace::Rgb,
+    };
+
+    let swatches = generate_swatches_octree(&pixels, count, cs, max_depth as usize);
 
     let entries: Vec<String> = swatches
         .iter()

@@ -1,11 +1,12 @@
 use crate::color::{Lab, Rgb};
+use crate::sample_step;
 
 const MAX_ITERATIONS: u32 = 50;
 const CONVERGENCE_THRESHOLD: f32 = 0.5;
 
 /// The colour space used for clustering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ColorSpace {
+pub enum KmeansColorSpace {
     /// Cluster using Euclidean distance in RGB space.
     Rgb,
     /// Cluster using Euclidean distance in CIELAB space.
@@ -23,16 +24,6 @@ pub enum InitMethod {
     KMeansPlusPlus,
 }
 
-const MAX_SAMPLE: usize = 20_000;
-
-fn sample_step(len: usize) -> usize {
-    if len > MAX_SAMPLE {
-        len / MAX_SAMPLE
-    } else {
-        1
-    }
-}
-
 /// Extracts `k` dominant colours from the given pixels.
 ///
 /// Returns a vec of `(colour, population)` pairs. Large inputs are
@@ -43,19 +34,19 @@ fn sample_step(len: usize) -> usize {
 ///
 /// ```
 /// use swatchthis::color::Rgb;
-/// use swatchthis::kmeans::{extract_colors, ColorSpace, InitMethod};
+/// use swatchthis::kmeans::{extract_colors_kmeans, KmeansColorSpace, InitMethod};
 ///
 /// let pixels = vec![Rgb::new(255, 0, 0); 50];
-/// let result = extract_colors(&pixels, 1, ColorSpace::Rgb, InitMethod::Random, 42);
+/// let result = extract_colors_kmeans(&pixels, 1, KmeansColorSpace::Rgb, InitMethod::Random, 42);
 ///
 /// assert_eq!(result.len(), 1);
 /// assert_eq!(result[0].0, Rgb::new(255, 0, 0));
 /// assert_eq!(result[0].1, 50);
 /// ```
-pub fn extract_colors(
+pub fn extract_colors_kmeans(
     pixels: &[Rgb],
     k: usize,
-    color_space: ColorSpace,
+    color_space: KmeansColorSpace,
     init: InitMethod,
     seed: u64,
 ) -> Vec<(Rgb, u32)> {
@@ -68,9 +59,11 @@ pub fn extract_colors(
     let k = k.min(sampled.len());
 
     match color_space {
-        ColorSpace::Rgb => cluster_rgb(&sampled, k, init, seed),
-        ColorSpace::Lab => cluster_lab(&sampled, k, init, seed, Lab::distance_squared),
-        ColorSpace::LabCIEDE2000 => cluster_lab(&sampled, k, init, seed, Lab::distance_ciede2000),
+        KmeansColorSpace::Rgb => cluster_rgb(&sampled, k, init, seed),
+        KmeansColorSpace::Lab => cluster_lab(&sampled, k, init, seed, Lab::distance_squared),
+        KmeansColorSpace::LabCIEDE2000 => {
+            cluster_lab(&sampled, k, init, seed, Lab::distance_ciede2000)
+        }
     }
 }
 
@@ -321,7 +314,13 @@ mod tests {
     #[test]
     fn extracts_obvious_clusters_rgb() {
         let pixels = make_pixels(&[(255, 0, 0), (0, 255, 0), (0, 0, 255)], 100);
-        let swatches = extract_colors(&pixels, 3, ColorSpace::Rgb, InitMethod::KMeansPlusPlus, 42);
+        let swatches = extract_colors_kmeans(
+            &pixels,
+            3,
+            KmeansColorSpace::Rgb,
+            InitMethod::KMeansPlusPlus,
+            42,
+        );
         assert_eq!(swatches.len(), 3);
         for expected in [
             Rgb::new(255, 0, 0),
@@ -340,7 +339,13 @@ mod tests {
     #[test]
     fn extracts_obvious_clusters_lab() {
         let pixels = make_pixels(&[(255, 0, 0), (0, 255, 0), (0, 0, 255)], 100);
-        let swatches = extract_colors(&pixels, 3, ColorSpace::Lab, InitMethod::KMeansPlusPlus, 42);
+        let swatches = extract_colors_kmeans(
+            &pixels,
+            3,
+            KmeansColorSpace::Lab,
+            InitMethod::KMeansPlusPlus,
+            42,
+        );
         assert_eq!(swatches.len(), 3);
         for expected in [
             Rgb::new(255, 0, 0),
@@ -359,27 +364,37 @@ mod tests {
     #[test]
     fn random_init_works() {
         let pixels = make_pixels(&[(200, 50, 50), (50, 200, 50)], 50);
-        let swatches = extract_colors(&pixels, 2, ColorSpace::Rgb, InitMethod::Random, 7);
+        let swatches =
+            extract_colors_kmeans(&pixels, 2, KmeansColorSpace::Rgb, InitMethod::Random, 7);
         assert_eq!(swatches.len(), 2);
     }
 
     #[test]
     fn single_colour() {
         let pixels = make_pixels(&[(42, 42, 42)], 10);
-        let swatches = extract_colors(&pixels, 1, ColorSpace::Rgb, InitMethod::KMeansPlusPlus, 1);
+        let swatches = extract_colors_kmeans(
+            &pixels,
+            1,
+            KmeansColorSpace::Rgb,
+            InitMethod::KMeansPlusPlus,
+            1,
+        );
         assert_eq!(swatches.len(), 1);
         assert_eq!(swatches[0].0, Rgb::new(42, 42, 42));
     }
 
     #[test]
     fn empty_input() {
-        assert!(extract_colors(&[], 5, ColorSpace::Rgb, InitMethod::Random, 0).is_empty());
+        assert!(
+            extract_colors_kmeans(&[], 5, KmeansColorSpace::Rgb, InitMethod::Random, 0).is_empty()
+        );
     }
 
     #[test]
     fn k_larger_than_pixels() {
         let pixels = vec![Rgb::new(10, 20, 30), Rgb::new(40, 50, 60)];
-        let swatches = extract_colors(&pixels, 100, ColorSpace::Rgb, InitMethod::Random, 1);
+        let swatches =
+            extract_colors_kmeans(&pixels, 100, KmeansColorSpace::Rgb, InitMethod::Random, 1);
         assert_eq!(swatches.len(), 2);
     }
 }
