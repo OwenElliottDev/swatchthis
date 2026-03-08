@@ -7,7 +7,7 @@
 //!
 //! ```
 //! use swatchthis::{generate_swatches_kmeans, pixels_from_rgba};
-//! use swatchthis::kmeans::{KmeansColorSpace, InitMethod};
+//! use swatchthis::algorithms::kmeans::{KmeansColorSpace, InitMethod};
 //!
 //! // Simulate a small image: 4 red pixels and 4 blue pixels (RGBA)
 //! let rgba: Vec<u8> = [255, 0, 0, 255].repeat(4)
@@ -24,12 +24,14 @@
 //! }
 //! ```
 
+pub mod algorithms;
 pub mod color;
-pub mod kmeans;
-pub mod median_cut;
-pub mod octree;
+pub mod preprocessors;
 pub mod swatch;
 
+use algorithms::kmeans;
+use algorithms::median_cut;
+use algorithms::octree;
 use color::Rgb;
 use kmeans::{InitMethod, KmeansColorSpace};
 use octree::{OctreeColorSpace, OctreeDepth};
@@ -46,7 +48,7 @@ use swatch::Swatch;
 /// ```
 /// use swatchthis::generate_swatches_kmeans;
 /// use swatchthis::color::Rgb;
-/// use swatchthis::kmeans::{KmeansColorSpace, InitMethod};
+/// use swatchthis::algorithms::kmeans::{KmeansColorSpace, InitMethod};
 ///
 /// let pixels = vec![Rgb::new(255, 0, 0); 100];
 /// let swatches = generate_swatches_kmeans(&pixels, 1, KmeansColorSpace::Rgb, InitMethod::Random, 1);
@@ -187,4 +189,41 @@ pub fn generate_swatches_median_cut_wasm(rgba_data: &[u8], count: usize) -> Stri
 pub fn complementary_color_wasm(r: u8, g: u8, b: u8) -> Vec<u8> {
     let comp = Rgb::new(r, g, b).to_hsl().complement().to_rgb();
     vec![comp.r, comp.g, comp.b]
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = slicPreprocess)]
+pub fn slic_preprocess_wasm(
+    rgba_data: &[u8],
+    width: usize,
+    height: usize,
+    num_superpixels: usize,
+    compactness: f32,
+) -> Vec<u8> {
+    let pixels = pixels_from_rgba(rgba_data);
+    let result =
+        preprocessors::slic::slic_preprocess(&pixels, width, height, num_superpixels, compactness);
+    preprocessors::rgb_vec_to_rgba(&result)
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = seedsPreprocess)]
+pub fn seeds_preprocess_wasm(
+    rgba_data: &[u8],
+    width: usize,
+    height: usize,
+    num_superpixels: usize,
+    num_levels: usize,
+    histogram_bins: usize,
+) -> Vec<u8> {
+    let pixels = pixels_from_rgba(rgba_data);
+    let result = preprocessors::seeds::seeds_preprocess(
+        &pixels,
+        width,
+        height,
+        num_superpixels,
+        num_levels,
+        histogram_bins,
+    );
+    preprocessors::rgb_vec_to_rgba(&result)
 }

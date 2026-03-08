@@ -223,6 +223,55 @@
     </div>
 
     <div>
+      <label for="preprocessorSelect">Preprocessor</label>
+      <select id="preprocessorSelect">
+        <option value="none" selected>None</option>
+        <option value="slic">SLIC</option>
+        <option value="seeds">SEEDS</option>
+      </select>
+    </div>
+
+    <div class="slic-only" style="display:none">
+      <label for="slicSuperpixels">Superpixels</label>
+      <div class="range-row">
+        <input type="range" id="slicSuperpixels" value="200" min="10" max="1000" step="10">
+        <span class="range-value" id="slicSuperpixelsValue">200</span>
+      </div>
+    </div>
+
+    <div class="slic-only" style="display:none">
+      <label for="slicCompactness">Compactness</label>
+      <div class="range-row">
+        <input type="range" id="slicCompactness" value="20" min="1" max="80" step="1">
+        <span class="range-value" id="slicCompactnessValue">20</span>
+      </div>
+    </div>
+
+    <div class="seeds-only" style="display:none">
+      <label for="seedsSuperpixels">Superpixels</label>
+      <div class="range-row">
+        <input type="range" id="seedsSuperpixels" value="200" min="10" max="1000" step="10">
+        <span class="range-value" id="seedsSuperpixelsValue">200</span>
+      </div>
+    </div>
+
+    <div class="seeds-only" style="display:none">
+      <label for="seedsLevels">Levels</label>
+      <div class="range-row">
+        <input type="range" id="seedsLevels" value="3" min="1" max="8" step="1">
+        <span class="range-value" id="seedsLevelsValue">3</span>
+      </div>
+    </div>
+
+    <div class="seeds-only" style="display:none">
+      <label for="seedsBins">Histogram bins</label>
+      <div class="range-row">
+        <input type="range" id="seedsBins" value="5" min="2" max="10" step="1">
+        <span class="range-value" id="seedsBinsValue">5</span>
+      </div>
+    </div>
+
+    <div>
       <label for="algorithmSelect">Algorithm</label>
       <select id="algorithmSelect">
         <option value="median-cut" selected>Median Cut</option>
@@ -296,11 +345,12 @@
 </div>
 
 <script type="module">
-  import init, { generateSwatches, generateSwatchesOctree, generateSwatchesMedianCut, complementaryColor } from './pkg/swatchthis.js';
+  import init, { generateSwatches, generateSwatchesOctree, generateSwatchesMedianCut, complementaryColor, slicPreprocess, seedsPreprocess } from './pkg/swatchthis.js';
 
   const dropZone = document.getElementById('dropZone');
   const fileInput = document.getElementById('fileInput');
   const urlInput = document.getElementById('urlInput');
+  const preprocessorSelect = document.getElementById('preprocessorSelect');
   const algorithmSelect = document.getElementById('algorithmSelect');
   const countInput = document.getElementById('countInput');
   const colorSpaceSelect = document.getElementById('colorSpaceSelect');
@@ -318,6 +368,34 @@
   const canvas = document.getElementById('canvas');
   const swatchContainer = document.getElementById('swatchContainer');
   const ctx = canvas.getContext('2d');
+
+  const slicSuperpixels = document.getElementById('slicSuperpixels');
+  const slicSuperpixelsValue = document.getElementById('slicSuperpixelsValue');
+  const slicCompactness = document.getElementById('slicCompactness');
+  const slicCompactnessValue = document.getElementById('slicCompactnessValue');
+  const seedsSuperpixels = document.getElementById('seedsSuperpixels');
+  const seedsSuperpixelsValue = document.getElementById('seedsSuperpixelsValue');
+  const seedsLevels = document.getElementById('seedsLevels');
+  const seedsLevelsValue = document.getElementById('seedsLevelsValue');
+  const seedsBins = document.getElementById('seedsBins');
+  const seedsBinsValue = document.getElementById('seedsBinsValue');
+
+  slicSuperpixels.addEventListener('input', () => { slicSuperpixelsValue.textContent = slicSuperpixels.value; });
+  slicCompactness.addEventListener('input', () => { slicCompactnessValue.textContent = slicCompactness.value; });
+  seedsSuperpixels.addEventListener('input', () => { seedsSuperpixelsValue.textContent = seedsSuperpixels.value; });
+  seedsLevels.addEventListener('input', () => { seedsLevelsValue.textContent = seedsLevels.value; });
+  seedsBins.addEventListener('input', () => { seedsBinsValue.textContent = seedsBins.value; });
+
+  // --- Preprocessor controls ---
+
+  function updatePreprocessorControls() {
+    const pp = preprocessorSelect.value;
+    document.querySelectorAll('.slic-only').forEach(el => el.style.display = pp === 'slic' ? '' : 'none');
+    document.querySelectorAll('.seeds-only').forEach(el => el.style.display = pp === 'seeds' ? '' : 'none');
+  }
+
+  preprocessorSelect.addEventListener('change', updatePreprocessorControls);
+  updatePreprocessorControls();
 
   // --- Algorithm controls ---
 
@@ -408,16 +486,28 @@
 
     try {
       const t0 = performance.now();
+
+      // Optional preprocessing
+      const pp = preprocessorSelect.value;
+      let inputRgba = rgba;
+      if (pp === 'slic') {
+        inputRgba = slicPreprocess(rgba, canvas.width, canvas.height,
+          parseInt(slicSuperpixels.value) || 200, parseFloat(slicCompactness.value) || 20);
+      } else if (pp === 'seeds') {
+        inputRgba = seedsPreprocess(rgba, canvas.width, canvas.height,
+          parseInt(seedsSuperpixels.value) || 200, parseInt(seedsLevels.value) || 3, parseInt(seedsBins.value) || 5);
+      }
+
       let json;
       if (algo === 'octree') {
         const maxDepth = parseInt(maxDepthInput.value) || 6;
-        json = generateSwatchesOctree(rgba, count, colorSpace, maxDepth);
+        json = generateSwatchesOctree(inputRgba, count, colorSpace, maxDepth);
       } else if (algo === 'median-cut') {
-        json = generateSwatchesMedianCut(rgba, count);
+        json = generateSwatchesMedianCut(inputRgba, count);
       } else {
         const initMethod = initSelect.value;
         const seed = BigInt(Math.max(0, parseInt(seedInput.value) || 0));
-        json = generateSwatches(rgba, count, colorSpace, initMethod, seed);
+        json = generateSwatches(inputRgba, count, colorSpace, initMethod, seed);
       }
       const elapsed = performance.now() - t0;
       lastExtractTime = elapsed;

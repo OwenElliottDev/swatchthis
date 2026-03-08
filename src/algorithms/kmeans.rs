@@ -34,7 +34,7 @@ pub enum InitMethod {
 ///
 /// ```
 /// use swatchthis::color::Rgb;
-/// use swatchthis::kmeans::{extract_colors_kmeans, KmeansColorSpace, InitMethod};
+/// use swatchthis::algorithms::kmeans::{extract_colors_kmeans, KmeansColorSpace, InitMethod};
 ///
 /// let pixels = vec![Rgb::new(255, 0, 0); 50];
 /// let result = extract_colors_kmeans(&pixels, 1, KmeansColorSpace::Rgb, InitMethod::Random, 42);
