@@ -59,6 +59,27 @@
     border-color: #6366f1;
   }
 
+  input[type="range"] {
+    width: 100%;
+    accent-color: #6366f1;
+  }
+
+  .range-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .range-row input[type="range"] { flex: 1; }
+
+  .range-value {
+    font-size: 0.9rem;
+    font-family: monospace;
+    color: #e4e4e7;
+    min-width: 1.5em;
+    text-align: center;
+  }
+
   .drop-zone {
     border: 2px dashed #2e2e32;
     border-radius: 8px;
@@ -152,6 +173,32 @@
     color: #52525b;
   }
 
+  .swatch-pair {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .swatch-pair .swatch-color {
+    width: 72px;
+    height: 36px;
+  }
+
+  .swatch-pair .swatch-color:first-child {
+    border-radius: 8px 8px 0 0;
+  }
+
+  .swatch-pair .swatch-color:nth-child(2) {
+    border-radius: 0 0 8px 8px;
+  }
+
+  .complement-label {
+    font-size: 0.65rem;
+    font-family: monospace;
+    color: #71717a;
+  }
+
   .status {
     font-size: 0.8rem;
     color: #71717a;
@@ -186,15 +233,16 @@
       <select id="algorithmSelect">
         <option value="kmeans" selected>K-Means</option>
         <option value="octree">Octree</option>
+        <option value="median-cut">Median Cut</option>
       </select>
     </div>
 
     <div>
       <label for="countInput">Swatch count</label>
-      <input type="number" id="countInput" value="6" min="1" max="32">
+      <input type="number" id="countInput" value="6" min="1">
     </div>
 
-    <div>
+    <div class="color-space-option">
       <label for="colorSpaceSelect">Colour space</label>
       <select id="colorSpaceSelect">
         <option value="lab" selected>CIELAB</option>
@@ -218,7 +266,16 @@
 
     <div class="octree-only" style="display:none">
       <label for="maxDepthInput">Max depth</label>
-      <input type="number" id="maxDepthInput" value="6" min="1" max="8">
+      <div class="range-row">
+        <input type="range" id="maxDepthInput" value="6" min="1" max="8" step="1">
+        <span class="range-value" id="maxDepthValue">6</span>
+      </div>
+    </div>
+
+    <div>
+      <label style="display:inline;text-transform:none;color:#e4e4e7;font-size:0.9rem">
+        <input type="checkbox" id="complementToggle"> Show complementary colours
+      </label>
     </div>
 
     <button id="extractBtn" disabled>Extract swatches</button>
@@ -235,7 +292,7 @@
 </div>
 
 <script type="module">
-  import init, { generateSwatches, generateSwatchesOctree } from './pkg/swatchthis.js';
+  import init, { generateSwatches, generateSwatchesOctree, generateSwatchesMedianCut, complementaryColor } from './pkg/swatchthis.js';
 
   const dropZone = document.getElementById('dropZone');
   const fileInput = document.getElementById('fileInput');
@@ -246,6 +303,12 @@
   const initSelect = document.getElementById('initSelect');
   const seedInput = document.getElementById('seedInput');
   const maxDepthInput = document.getElementById('maxDepthInput');
+  const maxDepthValue = document.getElementById('maxDepthValue');
+  const complementToggle = document.getElementById('complementToggle');
+
+  maxDepthInput.addEventListener('input', () => {
+    maxDepthValue.textContent = maxDepthInput.value;
+  });
   const extractBtn = document.getElementById('extractBtn');
   const status = document.getElementById('status');
   const canvas = document.getElementById('canvas');
@@ -257,14 +320,16 @@
     const algo = algorithmSelect.value;
     document.querySelectorAll('.kmeans-only').forEach(el => el.style.display = algo === 'kmeans' ? '' : 'none');
     document.querySelectorAll('.octree-only').forEach(el => el.style.display = algo === 'octree' ? '' : 'none');
+    document.querySelectorAll('.color-space-option').forEach(el => el.style.display = algo === 'median-cut' ? 'none' : '');
 
-    // Reset colour space if CIEDE2000 was selected and we switched to octree
-    if (algo === 'octree' && colorSpaceSelect.value === 'lab-ciede2000') {
+    // Reset colour space if CIEDE2000 was selected and we switched away from kmeans
+    if (algo !== 'kmeans' && colorSpaceSelect.value === 'lab-ciede2000') {
       colorSpaceSelect.value = 'lab';
     }
   }
 
   algorithmSelect.addEventListener('change', updateAlgorithmControls);
+  updateAlgorithmControls();
 
   let wasmReady = false;
   let imageLoaded = false;
@@ -343,7 +408,7 @@
     const rgba = imageData.data;
 
     const algo = algorithmSelect.value;
-    const count = Math.max(1, Math.min(32, parseInt(countInput.value) || 6));
+    const count = Math.max(1, parseInt(countInput.value) || 6);
     const colorSpace = colorSpaceSelect.value;
 
     status.textContent = 'Extracting swatches...';
@@ -355,8 +420,10 @@
         const t0 = performance.now();
         let json;
         if (algo === 'octree') {
-          const maxDepth = Math.max(1, Math.min(8, parseInt(maxDepthInput.value) || 6));
+          const maxDepth = parseInt(maxDepthInput.value) || 6;
           json = generateSwatchesOctree(rgba, count, colorSpace, maxDepth);
+        } else if (algo === 'median-cut') {
+          json = generateSwatchesMedianCut(rgba, count);
         } else {
           const initMethod = initSelect.value;
           const seed = BigInt(Math.max(0, parseInt(seedInput.value) || 0));
@@ -375,18 +442,42 @@
     });
   });
 
+  let lastSwatches = [];
+
+  complementToggle.addEventListener('change', () => {
+    if (lastSwatches.length > 0) renderSwatches(lastSwatches);
+  });
+
   function renderSwatches(swatches) {
+    lastSwatches = swatches;
     swatchContainer.innerHTML = '';
     const totalPop = swatches.reduce((s, sw) => s + sw.population, 0);
+    const showComp = complementToggle.checked;
+
     for (const sw of swatches) {
       const pct = ((sw.population / totalPop) * 100).toFixed(1);
       const div = document.createElement('div');
-      div.className = 'swatch';
-      div.innerHTML = `
-        <div class="swatch-color" style="background:${sw.hex}"></div>
-        <span class="swatch-label">${sw.hex}</span>
-        <span class="swatch-pop">${pct}%</span>
-      `;
+
+      if (showComp) {
+        const comp = complementaryColor(sw.r, sw.g, sw.b);
+        const compHex = `#${comp[0].toString(16).padStart(2,'0')}${comp[1].toString(16).padStart(2,'0')}${comp[2].toString(16).padStart(2,'0')}`;
+        div.className = 'swatch swatch-pair';
+        div.innerHTML = `
+          <div class="swatch-color" style="background:${sw.hex}"></div>
+          <div class="swatch-color" style="background:${compHex}"></div>
+          <span class="swatch-label">${sw.hex}</span>
+          <span class="complement-label">${compHex}</span>
+          <span class="swatch-pop">${pct}%</span>
+        `;
+      } else {
+        div.className = 'swatch';
+        div.innerHTML = `
+          <div class="swatch-color" style="background:${sw.hex}"></div>
+          <span class="swatch-label">${sw.hex}</span>
+          <span class="swatch-pop">${pct}%</span>
+        `;
+      }
+
       swatchContainer.appendChild(div);
     }
   }

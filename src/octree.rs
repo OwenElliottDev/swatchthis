@@ -6,19 +6,54 @@ pub enum OctreeColorSpace {
     Lab,
 }
 
+/// Tree depth for the octree quantiser. Valid range is 1–8, matching the
+/// 8 bits per colour channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum OctreeDepth {
+    D1 = 1,
+    D2 = 2,
+    D3 = 3,
+    D4 = 4,
+    D5 = 5,
+    D6 = 6,
+    D7 = 7,
+    D8 = 8,
+}
+
+impl OctreeDepth {
+    pub fn from_u32(v: u32) -> Self {
+        match v {
+            1 => Self::D1,
+            2 => Self::D2,
+            3 => Self::D3,
+            4 => Self::D4,
+            5 => Self::D5,
+            6 => Self::D6,
+            7 => Self::D7,
+            _ => Self::D8,
+        }
+    }
+
+    fn as_usize(self) -> usize {
+        self as usize
+    }
+}
+
 pub fn extract_colors_octree(
     pixels: &[Rgb],
     k: usize,
     color_space: OctreeColorSpace,
-    max_depth: usize,
+    max_depth: OctreeDepth,
 ) -> Vec<(Rgb, u32)> {
     if pixels.is_empty() || k == 0 {
         return Vec::new();
     }
 
+    let depth = max_depth.as_usize();
     match color_space {
-        OctreeColorSpace::Rgb => octree_rgb(pixels, k, max_depth),
-        OctreeColorSpace::Lab => octree_lab(pixels, k, max_depth),
+        OctreeColorSpace::Rgb => octree_rgb(pixels, k, depth),
+        OctreeColorSpace::Lab => octree_lab(pixels, k, depth),
     }
 }
 
@@ -27,7 +62,6 @@ struct OctreeNode {
     children: [Option<usize>; 8],
     pixel_count: u32,
     channel_sum: [i64; 3],
-    depth: usize,
     is_leaf: bool,
 }
 
@@ -39,9 +73,10 @@ struct Octree {
 
 impl Octree {
     fn new(max_depth: usize) -> Self {
-        let mut root = OctreeNode::default();
-        root.depth = 0;
-        root.is_leaf = max_depth == 0;
+        let root = OctreeNode {
+            is_leaf: max_depth == 0,
+            ..Default::default()
+        };
         let leaf_count = if root.is_leaf { 1 } else { 0 };
         Self {
             nodes: vec![root],
@@ -54,7 +89,6 @@ impl Octree {
         let id = self.nodes.len();
         let is_leaf = depth >= max_depth;
         self.nodes.push(OctreeNode {
-            depth,
             is_leaf,
             ..Default::default()
         });
@@ -69,7 +103,7 @@ impl Octree {
     fn insert<C: ColorChannels + Copy>(&mut self, color: C, max_depth: usize, max_colors: usize) {
         let mut node_id = 0; // root
         for depth in 0..max_depth {
-            let idx = get_color_index(color, depth) as usize;
+            let idx = get_color_index(color, depth);
 
             let child_id = match self.nodes[node_id].children[idx] {
                 Some(id) => id,
@@ -244,19 +278,21 @@ mod tests {
 
     #[test]
     fn empty_input() {
-        assert!(extract_colors_octree(&[], 5, OctreeColorSpace::Rgb, 6).is_empty());
+        assert!(extract_colors_octree(&[], 5, OctreeColorSpace::Rgb, OctreeDepth::D6).is_empty());
     }
 
     #[test]
     fn zero_k() {
         let pixels = vec![Rgb::new(255, 0, 0); 10];
-        assert!(extract_colors_octree(&pixels, 0, OctreeColorSpace::Rgb, 6).is_empty());
+        assert!(
+            extract_colors_octree(&pixels, 0, OctreeColorSpace::Rgb, OctreeDepth::D6).is_empty()
+        );
     }
 
     #[test]
     fn single_color_rgb() {
         let pixels = make_pixels(&[(42, 42, 42)], 50);
-        let result = extract_colors_octree(&pixels, 1, OctreeColorSpace::Rgb, 6);
+        let result = extract_colors_octree(&pixels, 1, OctreeColorSpace::Rgb, OctreeDepth::D6);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0, Rgb::new(42, 42, 42));
         assert_eq!(result[0].1, 50);
@@ -265,7 +301,7 @@ mod tests {
     #[test]
     fn single_color_lab() {
         let pixels = make_pixels(&[(42, 42, 42)], 50);
-        let result = extract_colors_octree(&pixels, 1, OctreeColorSpace::Lab, 6);
+        let result = extract_colors_octree(&pixels, 1, OctreeColorSpace::Lab, OctreeDepth::D6);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].1, 50);
         let c = result[0].0;
@@ -281,7 +317,7 @@ mod tests {
     #[test]
     fn extracts_obvious_clusters_rgb() {
         let pixels = make_pixels(&[(255, 0, 0), (0, 255, 0), (0, 0, 255)], 100);
-        let result = extract_colors_octree(&pixels, 3, OctreeColorSpace::Rgb, 6);
+        let result = extract_colors_octree(&pixels, 3, OctreeColorSpace::Rgb, OctreeDepth::D6);
         assert_eq!(result.len(), 3);
         for expected in [
             Rgb::new(255, 0, 0),
@@ -300,7 +336,7 @@ mod tests {
     #[test]
     fn extracts_obvious_clusters_lab() {
         let pixels = make_pixels(&[(255, 0, 0), (0, 255, 0), (0, 0, 255)], 100);
-        let result = extract_colors_octree(&pixels, 3, OctreeColorSpace::Lab, 6);
+        let result = extract_colors_octree(&pixels, 3, OctreeColorSpace::Lab, OctreeDepth::D6);
         assert_eq!(result.len(), 3);
         for expected in [
             Rgb::new(255, 0, 0),
@@ -331,7 +367,7 @@ mod tests {
             ],
             100,
         );
-        let result = extract_colors_octree(&pixels, 4, OctreeColorSpace::Rgb, 6);
+        let result = extract_colors_octree(&pixels, 4, OctreeColorSpace::Rgb, OctreeDepth::D6);
         assert!(
             result.len() <= 4,
             "got {} colors, expected <= 4",
@@ -342,7 +378,7 @@ mod tests {
     #[test]
     fn k_larger_than_distinct_colors() {
         let pixels = make_pixels(&[(10, 20, 30), (40, 50, 60)], 50);
-        let result = extract_colors_octree(&pixels, 100, OctreeColorSpace::Rgb, 6);
+        let result = extract_colors_octree(&pixels, 100, OctreeColorSpace::Rgb, OctreeDepth::D6);
         assert!(result.len() <= 2);
         assert_eq!(total_population(&result), 100);
     }
@@ -350,7 +386,7 @@ mod tests {
     #[test]
     fn population_sums_to_pixel_count() {
         let pixels = make_pixels(&[(200, 50, 50), (50, 200, 50), (50, 50, 200)], 80);
-        let result = extract_colors_octree(&pixels, 3, OctreeColorSpace::Rgb, 6);
+        let result = extract_colors_octree(&pixels, 3, OctreeColorSpace::Rgb, OctreeDepth::D6);
         assert_eq!(total_population(&result), 240);
     }
 
@@ -359,7 +395,7 @@ mod tests {
         let mut pixels = make_pixels(&[(255, 0, 0)], 200);
         pixels.extend(make_pixels(&[(0, 255, 0)], 100));
         pixels.extend(make_pixels(&[(0, 0, 255)], 50));
-        let result = extract_colors_octree(&pixels, 3, OctreeColorSpace::Rgb, 6);
+        let result = extract_colors_octree(&pixels, 3, OctreeColorSpace::Rgb, OctreeDepth::D6);
         for w in result.windows(2) {
             assert!(w[0].1 >= w[1].1, "palette not sorted by population");
         }
@@ -380,23 +416,32 @@ mod tests {
             ],
             100,
         );
-        let result = extract_colors_octree(&pixels, 2, OctreeColorSpace::Rgb, 6);
+        let result = extract_colors_octree(&pixels, 2, OctreeColorSpace::Rgb, OctreeDepth::D6);
         assert!(result.len() <= 2);
     }
 
     #[test]
     fn k_one() {
         let pixels = make_pixels(&[(100, 150, 200), (200, 100, 50)], 50);
-        let result = extract_colors_octree(&pixels, 1, OctreeColorSpace::Rgb, 6);
+        let result = extract_colors_octree(&pixels, 1, OctreeColorSpace::Rgb, OctreeDepth::D6);
         assert_eq!(result.len(), 1);
     }
 
     #[test]
     fn different_depths() {
         let pixels = make_pixels(&[(255, 0, 0), (0, 255, 0)], 50);
-        for depth in 1..=8 {
+        for depth in [
+            OctreeDepth::D1,
+            OctreeDepth::D2,
+            OctreeDepth::D3,
+            OctreeDepth::D4,
+            OctreeDepth::D5,
+            OctreeDepth::D6,
+            OctreeDepth::D7,
+            OctreeDepth::D8,
+        ] {
             let result = extract_colors_octree(&pixels, 2, OctreeColorSpace::Rgb, depth);
-            assert!(!result.is_empty(), "empty result at depth {depth}",);
+            assert!(!result.is_empty(), "empty result at depth {depth:?}");
             assert_eq!(total_population(&result), 100);
         }
     }
@@ -404,7 +449,7 @@ mod tests {
     #[test]
     fn lab_preserves_population() {
         let pixels = make_pixels(&[(200, 50, 50), (50, 200, 50)], 60);
-        let result = extract_colors_octree(&pixels, 2, OctreeColorSpace::Lab, 6);
+        let result = extract_colors_octree(&pixels, 2, OctreeColorSpace::Lab, OctreeDepth::D6);
         assert_eq!(total_population(&result), 120);
     }
 
@@ -413,7 +458,7 @@ mod tests {
         let pixels: Vec<Rgb> = (0..50)
             .map(|i| Rgb::new(100 + i, 100 + i, 100 + i))
             .collect();
-        let result = extract_colors_octree(&pixels, 3, OctreeColorSpace::Rgb, 6);
+        let result = extract_colors_octree(&pixels, 3, OctreeColorSpace::Rgb, OctreeDepth::D6);
         assert!(result.len() <= 3);
         assert_eq!(total_population(&result), 50);
     }

@@ -26,12 +26,13 @@
 
 pub mod color;
 pub mod kmeans;
+pub mod median_cut;
 pub mod octree;
 pub mod swatch;
 
 use color::Rgb;
 use kmeans::{InitMethod, KmeansColorSpace};
-use octree::OctreeColorSpace;
+use octree::{OctreeColorSpace, OctreeDepth};
 use swatch::Swatch;
 
 /// Extracts dominant colour swatches from a slice of pixels.
@@ -59,28 +60,35 @@ pub fn generate_swatches_kmeans(
     init: InitMethod,
     seed: u64,
 ) -> Vec<Swatch> {
-    let mut swatches: Vec<Swatch> =
-        kmeans::extract_colors_kmeans(pixels, count, color_space, init, seed)
-            .into_iter()
-            .map(|(color, pop)| Swatch::new(color, pop))
-            .collect();
-
-    swatches.sort_by(|a, b| b.population.cmp(&a.population));
-    swatches
+    collect_sorted_swatches(kmeans::extract_colors_kmeans(
+        pixels,
+        count,
+        color_space,
+        init,
+        seed,
+    ))
 }
 
 pub fn generate_swatches_octree(
     pixels: &[Rgb],
     count: usize,
     color_space: OctreeColorSpace,
-    max_depth: usize,
+    max_depth: OctreeDepth,
 ) -> Vec<Swatch> {
-    let mut swatches: Vec<Swatch> =
-        octree::extract_colors_octree(pixels, count, color_space, max_depth)
-            .into_iter()
-            .map(|(color, pop)| Swatch::new(color, pop))
-            .collect();
+    collect_sorted_swatches(octree::extract_colors_octree(
+        pixels,
+        count,
+        color_space,
+        max_depth,
+    ))
+}
 
+pub fn generate_swatches_median_cut(pixels: &[Rgb], count: usize) -> Vec<Swatch> {
+    collect_sorted_swatches(median_cut::extract_colors_median_cut(pixels, count))
+}
+
+fn collect_sorted_swatches(raw: Vec<(Rgb, u32)>) -> Vec<Swatch> {
+    let mut swatches: Vec<Swatch> = raw.into_iter().map(|(c, p)| Swatch::new(c, p)).collect();
     swatches.sort_by(|a, b| b.population.cmp(&a.population));
     swatches
 }
@@ -118,6 +126,8 @@ fn sample_step(len: usize) -> usize {
 }
 
 #[cfg(feature = "wasm")]
+use swatch::swatches_to_json;
+#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
 
 #[cfg(feature = "wasm")]
@@ -142,21 +152,7 @@ pub fn generate_swatches_kmeans_wasm(
     };
 
     let swatches = generate_swatches_kmeans(&pixels, count, cs, init, seed);
-
-    let entries: Vec<String> = swatches
-        .iter()
-        .map(|s| {
-            format!(
-                r#"{{"hex":"{}","r":{},"g":{},"b":{},"population":{}}}"#,
-                s.hex(),
-                s.color.r,
-                s.color.g,
-                s.color.b,
-                s.population
-            )
-        })
-        .collect();
-    format!("[{}]", entries.join(","))
+    swatches_to_json(&swatches)
 }
 
 #[cfg(feature = "wasm")]
@@ -174,20 +170,21 @@ pub fn generate_swatches_octree_wasm(
         _ => OctreeColorSpace::Rgb,
     };
 
-    let swatches = generate_swatches_octree(&pixels, count, cs, max_depth as usize);
+    let swatches = generate_swatches_octree(&pixels, count, cs, OctreeDepth::from_u32(max_depth));
+    swatches_to_json(&swatches)
+}
 
-    let entries: Vec<String> = swatches
-        .iter()
-        .map(|s| {
-            format!(
-                r#"{{"hex":"{}","r":{},"g":{},"b":{},"population":{}}}"#,
-                s.hex(),
-                s.color.r,
-                s.color.g,
-                s.color.b,
-                s.population
-            )
-        })
-        .collect();
-    format!("[{}]", entries.join(","))
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = generateSwatchesMedianCut)]
+pub fn generate_swatches_median_cut_wasm(rgba_data: &[u8], count: usize) -> String {
+    let pixels = pixels_from_rgba(rgba_data);
+    let swatches = generate_swatches_median_cut(&pixels, count);
+    swatches_to_json(&swatches)
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = complementaryColor)]
+pub fn complementary_color_wasm(r: u8, g: u8, b: u8) -> Vec<u8> {
+    let comp = Rgb::new(r, g, b).to_hsl().complement().to_rgb();
+    vec![comp.r, comp.g, comp.b]
 }

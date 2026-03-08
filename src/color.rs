@@ -15,6 +15,16 @@ pub struct Rgb {
     pub b: u8,
 }
 
+/// A colour in the HSL colour space.
+///
+/// H is hue (0.0–360.0), S is saturation (0.0–1.0), L is lightness (0.0–1.0).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Hsl {
+    pub h: f32,
+    pub s: f32,
+    pub l: f32,
+}
+
 /// A colour in the CIELAB colour space.
 ///
 /// L is lightness (0–100), a and b are the colour-opponent dimensions.
@@ -75,6 +85,114 @@ impl Rgb {
         let dg = self.g as i32 - other.g as i32;
         let db = self.b as i32 - other.b as i32;
         (dr * dr + dg * dg + db * db) as u32
+    }
+
+    /// Converts to HSL.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use swatchthis::color::Rgb;
+    ///
+    /// let hsl = Rgb::new(255, 0, 0).to_hsl();
+    /// assert!((hsl.h - 0.0).abs() < 0.1);
+    /// assert!((hsl.s - 1.0).abs() < 0.01);
+    /// assert!((hsl.l - 0.5).abs() < 0.01);
+    /// ```
+    pub fn to_hsl(self) -> Hsl {
+        let r = self.r as f32 / 255.0;
+        let g = self.g as f32 / 255.0;
+        let b = self.b as f32 / 255.0;
+
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+        let l = (max + min) * 0.5;
+        let delta = max - min;
+
+        if delta == 0.0 {
+            return Hsl { h: 0.0, s: 0.0, l };
+        }
+
+        let s = if l <= 0.5 {
+            delta / (max + min)
+        } else {
+            delta / (2.0 - max - min)
+        };
+
+        let h = if max == r {
+            ((g - b) / delta).rem_euclid(6.0) * 60.0
+        } else if max == g {
+            ((b - r) / delta + 2.0) * 60.0
+        } else {
+            ((r - g) / delta + 4.0) * 60.0
+        };
+
+        Hsl { h, s, l }
+    }
+
+    /// Calculates the luminance for a pixel
+    pub fn luminance(self) -> f32 {
+        0.2126 * self.r as f32 + 0.7152 * self.g as f32 + 0.0722 * self.b as f32
+    }
+}
+
+impl Hsl {
+    pub fn new(h: f32, s: f32, l: f32) -> Self {
+        Self { h, s, l }
+    }
+
+    /// Converts to sRGB.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use swatchthis::color::{Rgb, Hsl};
+    ///
+    /// let rgb = Rgb::new(128, 64, 32);
+    /// let roundtrip = rgb.to_hsl().to_rgb();
+    /// assert!(rgb.distance_squared(roundtrip) <= 1);
+    /// ```
+    pub fn to_rgb(self) -> Rgb {
+        if self.s == 0.0 {
+            let v = (self.l * 255.0).round() as u8;
+            return Rgb { r: v, g: v, b: v };
+        }
+
+        let q = if self.l < 0.5 {
+            self.l * (1.0 + self.s)
+        } else {
+            self.l + self.s - self.l * self.s
+        };
+        let p = 2.0 * self.l - q;
+        let h = self.h / 360.0;
+
+        let r = hue_to_rgb(p, q, h + 1.0 / 3.0);
+        let g = hue_to_rgb(p, q, h);
+        let b = hue_to_rgb(p, q, h - 1.0 / 3.0);
+
+        Rgb {
+            r: (r * 255.0).round() as u8,
+            g: (g * 255.0).round() as u8,
+            b: (b * 255.0).round() as u8,
+        }
+    }
+    /// Gets the complementary colour in the HSL space.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use swatchthis::color::{Rgb, Hsl};
+    ///
+    /// let hsl = Rgb::new(255, 0, 0).to_hsl();
+    /// let comp = hsl.complement();
+    /// assert!((comp.h - 180.0).abs() < 0.1);
+    /// ```
+    pub fn complement(self) -> Hsl {
+        Hsl {
+            h: (self.h + 180.0) % 360.0,
+            s: self.s,
+            l: self.l,
+        }
     }
 }
 
@@ -206,6 +324,24 @@ impl Lab {
     }
 }
 
+fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
+    if t < 0.0 {
+        t += 1.0;
+    }
+    if t > 1.0 {
+        t -= 1.0;
+    }
+    if t < 1.0 / 6.0 {
+        p + (q - p) * 6.0 * t
+    } else if t < 0.5 {
+        q
+    } else if t < 2.0 / 3.0 {
+        p + (q - p) * (2.0 / 3.0 - t) * 6.0
+    } else {
+        p
+    }
+}
+
 fn linearize(c: u8) -> f32 {
     let c = c as f32 / 255.0;
     if c <= 0.04045 {
@@ -295,5 +431,40 @@ mod tests {
     fn white_lab_values() {
         let lab = Rgb::new(255, 255, 255).to_lab();
         assert!((lab.l - 100.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn rgb_to_hsl_roundtrip() {
+        let colors = [
+            Rgb::new(255, 0, 0),
+            Rgb::new(0, 255, 0),
+            Rgb::new(0, 0, 255),
+            Rgb::new(128, 128, 128),
+            Rgb::new(0, 0, 0),
+            Rgb::new(255, 255, 255),
+            Rgb::new(128, 64, 32),
+        ];
+        for rgb in colors {
+            let hsl = rgb.to_hsl();
+            let back = hsl.to_rgb();
+            assert!(
+                rgb.distance_squared(back) <= 1,
+                "roundtrip failed for {rgb:?} (hsl={hsl:?}, back={back:?})"
+            );
+        }
+    }
+
+    #[test]
+    fn red_hsl_values() {
+        let hsl = Rgb::new(255, 0, 0).to_hsl();
+        assert!((hsl.h).abs() < 0.1);
+        assert!((hsl.s - 1.0).abs() < 0.01);
+        assert!((hsl.l - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn grey_has_zero_saturation() {
+        let hsl = Rgb::new(128, 128, 128).to_hsl();
+        assert_eq!(hsl.s, 0.0);
     }
 }
