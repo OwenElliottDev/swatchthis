@@ -91,7 +91,7 @@ pub fn generate_swatches_median_cut(pixels: &[Rgb], count: usize) -> Vec<Swatch>
 
 fn collect_sorted_swatches(raw: Vec<(Rgb, u32)>) -> Vec<Swatch> {
     let mut swatches: Vec<Swatch> = raw.into_iter().map(|(c, p)| Swatch::new(c, p)).collect();
-    swatches.sort_by(|a, b| b.population.cmp(&a.population));
+    swatches.sort_by_key(|b| std::cmp::Reverse(b.population));
     swatches
 }
 

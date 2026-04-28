@@ -227,7 +227,7 @@ fn octree_rgb(pixels: &[Rgb], k: usize, max_depth: usize) -> Vec<(Rgb, u32)> {
         tree.insert(p, max_depth, k);
     }
     let mut palette = tree.collect_rgb_palette();
-    palette.sort_by(|a, b| b.1.cmp(&a.1));
+    palette.sort_by_key(|b| std::cmp::Reverse(b.1));
     palette.truncate(k);
     palette
 }
@@ -240,7 +240,7 @@ fn octree_lab(pixels: &[Rgb], k: usize, max_depth: usize) -> Vec<(Rgb, u32)> {
         tree.insert(lab, max_depth, k);
     }
     let mut palette = tree.collect_lab_palette();
-    palette.sort_by(|a, b| b.1.cmp(&a.1));
+    palette.sort_by_key(|b| std::cmp::Reverse(b.1));
     palette.truncate(k);
     palette
 }
